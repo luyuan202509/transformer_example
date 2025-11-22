@@ -76,7 +76,40 @@ class Pos_FFN(nn.Module):
         x = self.linear2(x)
         x = self.relu2(x)
         return x
-    
+
+# 编码器块
+class Encoder_block(nn.Module):
+    def __init__(self, *args,**kwargs)->None:
+        super(Encoder_block, self).__init__(*args,**kwargs)
+        self.attention = Transformer_block()
+        self.add_norm_1 = Add_Norm()
+        self.pos_ffn = Pos_FFN()
+        self.add_norm_2 = Add_Norm()
+    def forward(self,x:torch.Tensor):
+        x1 = self.attention(x)
+        x1 = self.add_norm_1(x,x1)
+        x2 = self.pos_ffn(x1)
+        x2 = self.add_norm_2(x1,x2)
+        return x2
+
+# 编码器组装
+class Encoder(nn.Module):
+    def __init__(self, *args,**kwargs)->None:
+        super(Encoder, self).__init__(*args,**kwargs)
+        self.ebd = EBD()
+
+
+
+
+        self.add_norm = Add_Norm()
+        self.pos_ffn = Pos_FFN()
+
+        
+    def forward(self,x:torch.Tensor):
+        x = self.add_norm(x,x)
+        x = self.pos_ffn(x)
+        return x
+
 if __name__ == "__main__":  
     print("\n==词嵌入====================================================================\n")
     aaa = torch.ones((2,12)).long()

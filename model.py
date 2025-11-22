@@ -34,6 +34,7 @@ class Transformer_block(nn.Module):
         self.W_k = nn.Linear(24, 24,bias=False)
         self.W_v = nn.Linear(24, 24,bias=False)
         self.W_o = nn.Linear(24, 24,bias=False)
+        
     def forward(self,x:torch.Tensor):
         Q,K,V = self.W_q(x),self.W_k(x),self.W_v(x)
         Q,K,V = transpose_qkv(Q),transpose_qkv(K),transpose_qkv(V)

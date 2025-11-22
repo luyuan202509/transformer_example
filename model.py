@@ -16,7 +16,16 @@ def attention(Q,K,V):
     A = torch.softmax(A,dim=-1)
     O = A @ V
     return O
-    pass      
+
+def transpose_o(O:torch.Tensor):
+    """处理注意力输出 W_o 的维度"""
+    O=O.transpose(-2,-3)
+    O=O.reshape(O.shape[0],O.shape[1],-1) # 前两个维度不变，合并最后两个维度
+    return O
+def transpose_qkv(qkv:torch.Tensor):
+    qkv= qkv.reshape(qkv.shape[0],qkv.shape[1],4,6) # 嵌入维度24 拆成4,6
+    qkv = qkv.transpose(-2,-3) # 交换最后两个维度
+    return qkv
 
 class Transformer_block(nn.Module):
     def __init__(self, *args,**kwargs)->None:
@@ -27,7 +36,9 @@ class Transformer_block(nn.Module):
         self.W_o = nn.Linear(24, 24,bias=False)
     def forward(self,x:torch.Tensor):
         Q,K,V = self.W_q(x),self.W_k(x),self.W_v(x)
+        Q,K,V = transpose_qkv(Q),transpose_qkv(K),transpose_qkv(V)
         O = attention(Q,K,V)
+        O = transpose_o(O)
         O = self.W_o(O)
         return O
 
@@ -44,4 +55,3 @@ if __name__ == "__main__":
     atten_en = Transformer_block()
     aaa = atten_en(aaa)
     print(f"计算注意力后的aaa.shape: {aaa.shape}")
-    

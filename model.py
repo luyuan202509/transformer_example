@@ -27,9 +27,9 @@ def transpose_qkv(qkv:torch.Tensor):
     qkv = qkv.transpose(-2,-3) # 交换最后两个维度
     return qkv
 
-class Transformer_block(nn.Module):
+class Attention_block(nn.Module):
     def __init__(self, *args,**kwargs)->None:
-        super(Transformer_block, self).__init__(*args,**kwargs)
+        super(Attention_block, self).__init__(*args,**kwargs)
         self.W_q = nn.Linear(24, 24,bias=False)
         self.W_k = nn.Linear(24, 24,bias=False)
         self.W_v = nn.Linear(24, 24,bias=False)
@@ -83,7 +83,7 @@ class Pos_FFN(nn.Module):
 class Encoder_block(nn.Module):
     def __init__(self, *args,**kwargs)->None:
         super(Encoder_block, self).__init__(*args,**kwargs)
-        self.attention = Transformer_block()
+        self.attention = Attention_block()
         self.add_norm_1 = Add_Norm()
         self.pos_ffn = Pos_FFN()
         self.add_norm_2 = Add_Norm()
@@ -117,7 +117,7 @@ def main1():
     print(f"aaa.shape: {aaa.shape}")
     
     print("\n==注意力机制====================================================================\n")
-    atten_en = Transformer_block()
+    atten_en = Attention_block()
     aaa = atten_en(aaa)
     print(f"计算注意力后的aaa.shape: {aaa.shape}")
 

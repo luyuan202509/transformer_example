@@ -34,7 +34,7 @@ class Transformer_block(nn.Module):
         self.W_k = nn.Linear(24, 24,bias=False)
         self.W_v = nn.Linear(24, 24,bias=False)
         self.W_o = nn.Linear(24, 24,bias=False)
-        
+
     def forward(self,x:torch.Tensor):
         Q,K,V = self.W_q(x),self.W_k(x),self.W_v(x)
         Q,K,V = transpose_qkv(Q),transpose_qkv(K),transpose_qkv(V)
@@ -44,6 +44,39 @@ class Transformer_block(nn.Module):
         return O
 
 
+# 归一化层
+class Add_Norm(nn.Module):
+    def __init__(self, *args,**kwargs)->None:
+        super(Add_Norm, self).__init__(*args,**kwargs)
+        self.layernorm = nn.LayerNorm(24)
+    def forward(self,x,x1:torch.Tensor):
+        """
+        参数：
+        x: 嵌入向量 
+        x1: 注意力输入
+        返回：
+        x: 归一化
+        """
+        x = x + x1
+        x = self.layernorm(x)
+        return x 
+
+# 位置前馈网络
+class Pos_FFN(nn.Module):
+    def __init__(self, *args,**kwargs)->None:
+        super(Pos_FFN, self).__init__(*args,**kwargs)
+        self.linear1  = nn.Linear(24, 48,bias=False)
+        self.relu1 = nn.ReLU()
+        self.linear2 = nn.Linear(48, 24,bias=False)
+        self.relu2 = nn.ReLU()
+
+    def forward(self,x:torch.Tensor):
+        x = self.linear1(x)
+        x = self.relu1(x)
+        x = self.linear2(x)
+        x = self.relu2(x)
+        return x
+    
 if __name__ == "__main__":  
     print("\n==词嵌入====================================================================\n")
     aaa = torch.ones((2,12)).long()

@@ -10,7 +10,7 @@ class EBD(nn.Module):
         self.pos_t = torch.arange(0, 12).reshape(1,12)
 
     def forward(self, x:torch.Tensor):
-        return self.embedding(x) + self.pos_embedding(self.pos_t)
+        return self.embedding(x) + self.pos_embedding(self.pos_t[:,:x.shape[-1]])
 def attention(Q,K,V):
     A = Q @ K.transpose(-1,-2) / (K.shape[-1] ** 0.5)
     A = torch.softmax(A,dim=-1)
@@ -41,7 +41,6 @@ class Attention_block(nn.Module):
         O = transpose_o(O)
         O = self.W_o(O)
         return O
-
 
 # 归一化层
 class Add_Norm(nn.Module):
@@ -135,29 +134,43 @@ class Decoder_block(nn.Module):
         self.add_norm_2 = Add_Norm()
         self.pos_ffn = Pos_FFN()
         self.add_norm_3 = Add_Norm()
-        def forward(self,x:torch.Tensor,x1:torch.Tensor,x_en:torch.Tensor):
-            X_1 = self.attention(x)
-            X= self.add_norm_1(x,X_1)
-            X_1  = self.cross_attention(X,x_en)
-            X = self.add_norm_2(X,X_1)
-            X_1 = self.pos_ffn(X)
-            X = self.add_norm_3(X,X_1)
-            return X
+    def forward(self,x:torch.Tensor,x_en:torch.Tensor):
+        X_1 = self.attention(x)
+        X= self.add_norm_1(x,X_1)
+        X_1  = self.cross_attention(X,x_en)
+        X = self.add_norm_2(X,X_1)
+        X_1 = self.pos_ffn(X)
+        X = self.add_norm_3(X,X_1)
+        return X
 
 # 解码器
 class Decoder(nn.Module):
     def __init__(self, *args,**kwargs)->None:
-        super(Encoder, self).__init__(*args,**kwargs)
+        super(Decoder, self).__init__(*args,**kwargs)
         self.ebd = EBD()
         self.decoder_blocks = nn.Sequential()
         self.decoder_blocks.append(Decoder_block())
         self.decoder_blocks.append(Decoder_block())
+        self.linear = nn.Linear(24, 28,bias=False)
 
     def forward(self,x,x_en):
         x = self.ebd(x)
         for decoder_block in self.decoder_blocks:
             output = decoder_block(x,x_en)
+        output = self.linear(output)
         return output
+
+# 构建模型
+class Transformer(nn.Module):
+    def __init__(self, *args,**kwargs)->None:
+        super(Transformer, self).__init__(*args,**kwargs)
+        self.encoder = Encoder()
+        self.decoder = Decoder()
+    def forward(self,x_s,x_t):
+        x_en = self.encoder(x_s)
+        x = self.decoder(x_s,x_en)
+        return x
+        
 
 def main1():
     print("\n==词嵌入====================================================================\n")
@@ -182,7 +195,17 @@ def main2():
     print(f"编码器输出aaa: {aaa}")
     print(f"encoder: {encoder}")
 
+def main3():
+    """测试模型"""
+    aaa = torch.ones((2,12)).long()
+    bbb = torch.ones((2,4)).long()
+    print(f"输入aaa.shape: {aaa.shape}")
+    model = Transformer()
+    output = model(aaa,bbb)
+    print(f"输出output.shape: {output.shape}")
+   
 
 if __name__ == "__main__":  
     #main1()
-    main2()
+    #main2()
+    main3()

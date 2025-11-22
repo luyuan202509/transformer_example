@@ -49,6 +49,7 @@ class Add_Norm(nn.Module):
     def __init__(self, *args,**kwargs)->None:
         super(Add_Norm, self).__init__(*args,**kwargs)
         self.layernorm = nn.LayerNorm(24)
+        self.dropout = nn.Dropout(0.1)
     def forward(self,x,x1:torch.Tensor):
         """
         参数：
@@ -59,6 +60,7 @@ class Add_Norm(nn.Module):
         """
         x = x + x1
         x = self.layernorm(x)
+        x = self.dropout(x)
         return x 
 
 # 位置前馈网络
@@ -97,20 +99,16 @@ class Encoder(nn.Module):
     def __init__(self, *args,**kwargs)->None:
         super(Encoder, self).__init__(*args,**kwargs)
         self.ebd = EBD()
-
-
-
-
-        self.add_norm = Add_Norm()
-        self.pos_ffn = Pos_FFN()
-
-        
+        self.encoder_blocks = nn.Sequential()
+        self.encoder_blocks.append(Encoder_block())
+        self.encoder_blocks.append(Encoder_block())
     def forward(self,x:torch.Tensor):
-        x = self.add_norm(x,x)
-        x = self.pos_ffn(x)
-        return x
+        ebd_x = self.ebd(x)
+        for encoder_block in self.encoder_blocks:
+            output = encoder_block(ebd_x)
+        return output
 
-if __name__ == "__main__":  
+def main1():
     print("\n==词嵌入====================================================================\n")
     aaa = torch.ones((2,12)).long()
     print(f"aaa.shape: {aaa.shape}")
@@ -122,3 +120,18 @@ if __name__ == "__main__":
     atten_en = Transformer_block()
     aaa = atten_en(aaa)
     print(f"计算注意力后的aaa.shape: {aaa.shape}")
+
+def main2():
+    print("\n==编码器====================================================================\n")
+    aaa = torch.ones((2,12)).long()
+    print(f"输入aaa.shape: {aaa.shape}")
+    encoder = Encoder()
+    aaa = encoder(aaa)
+    print(f"编码器输出aaa.shape: {aaa.shape}")
+    print(f"编码器输出aaa: {aaa}")
+    print(f"encoder: {encoder}")
+
+
+if __name__ == "__main__":  
+    #main1()
+    main2()

@@ -34,7 +34,6 @@ class Attention_block(nn.Module):
         self.W_k = nn.Linear(24, 24,bias=False)
         self.W_v = nn.Linear(24, 24,bias=False)
         self.W_o = nn.Linear(24, 24,bias=False)
-
     def forward(self,x:torch.Tensor):
         Q,K,V = self.W_q(x),self.W_k(x),self.W_v(x)
         Q,K,V = transpose_qkv(Q),transpose_qkv(K),transpose_qkv(V)
@@ -106,6 +105,58 @@ class Encoder(nn.Module):
         ebd_x = self.ebd(x)
         for encoder_block in self.encoder_blocks:
             output = encoder_block(ebd_x)
+        return output
+
+
+class CrossAttention_block(nn.Module):
+    """交叉注意力机制"""
+    def __init__(self, *args,**kwargs)->None:
+        super(CrossAttention_block, self).__init__(*args,**kwargs)
+        self.W_q = nn.Linear(24, 24,bias=False)
+        self.W_k = nn.Linear(24, 24,bias=False)
+        self.W_v = nn.Linear(24, 24,bias=False)
+        self.W_o = nn.Linear(24, 24,bias=False)
+
+    def forward(self,x,x_en):
+        Q,K,V = self.W_q(x),self.W_k(x_en),self.W_v(x_en)
+        Q,K,V = transpose_qkv(Q),transpose_qkv(K),transpose_qkv(V)
+        O = attention(Q,K,V)
+        O = transpose_o(O)
+        O = self.W_o(O)
+        return O
+
+# 解码器块
+class Decoder_block(nn.Module):
+    def __init__(self, *args,**kwargs)->None:
+        super(Decoder_block, self).__init__(*args,**kwargs)
+        self.attention = Attention_block()
+        self.add_norm_1 = Add_Norm()
+        self.cross_attention = CrossAttention_block()
+        self.add_norm_2 = Add_Norm()
+        self.pos_ffn = Pos_FFN()
+        self.add_norm_3 = Add_Norm()
+        def forward(self,x:torch.Tensor,x1:torch.Tensor,x_en:torch.Tensor):
+            X_1 = self.attention(x)
+            X= self.add_norm_1(x,X_1)
+            X_1  = self.cross_attention(X,x_en)
+            X = self.add_norm_2(X,X_1)
+            X_1 = self.pos_ffn(X)
+            X = self.add_norm_3(X,X_1)
+            return X
+
+# 解码器
+class Decoder(nn.Module):
+    def __init__(self, *args,**kwargs)->None:
+        super(Encoder, self).__init__(*args,**kwargs)
+        self.ebd = EBD()
+        self.decoder_blocks = nn.Sequential()
+        self.decoder_blocks.append(Decoder_block())
+        self.decoder_blocks.append(Decoder_block())
+
+    def forward(self,x,x_en):
+        x = self.ebd(x)
+        for decoder_block in self.decoder_blocks:
+            output = decoder_block(x,x_en)
         return output
 
 def main1():

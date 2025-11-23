@@ -12,7 +12,7 @@ class EBD(nn.Module):
         self.pos_t = torch.arange(0, 12).reshape(1,12)
 
     def forward(self, x:torch.Tensor):
-        return self.embedding(x) + self.pos_embedding(self.pos_t[:,:x.shape[-1]])
+        return self.embedding(x) + self.pos_embedding(self.pos_t[:,:x.shape[-1]].to(x.device))
 def attention(Q,K,V,M:torch.Tensor):
     A = Q @ K.transpose(-1,-2) / (K.shape[-1] ** 0.5)
     M = M.unsqueeze(1)
@@ -60,18 +60,18 @@ class Add_Norm(nn.Module):
         返回：
         x: 归一化
         """
-        X_1 = self.linear(x1)
+        X_1 = self.layernorm(x1)
         x = x + X_1
-        x = self.dropout(x)
+        x = self.layernorm(x)
         return x 
 
 # 位置前馈网络
 class Pos_FFN(nn.Module):
     def __init__(self, *args,**kwargs)->None:
         super(Pos_FFN, self).__init__(*args,**kwargs)
-        self.linear1  = nn.Linear(num_hiddens, 48,bias=False)
+        self.linear1  = nn.Linear(num_hiddens, 1024,bias=False)
         self.relu1 = nn.ReLU()
-        self.linear2 = nn.Linear(48, num_hiddens,bias=False)
+        self.linear2 = nn.Linear(1024, num_hiddens,bias=False)
         self.relu2 = nn.ReLU()
 
     def forward(self,x:torch.Tensor):
@@ -145,7 +145,7 @@ class Decoder_block(nn.Module):
     def forward(self,X_t,O_m,X_en,I_m):
         O_m = O_m.unsqueeze(-2)
         I_m = I_m.unsqueeze(-2)
-        X_1 = self.attention(X_t,O_m * self.trail_mask[:,:O_m.shape[-1],:O_m.shape[-1]])
+        X_1 = self.attention(X_t,O_m * self.trail_mask[:,:O_m.shape[-1],:O_m.shape[-1]].to(X_t.device))
         X_t= self.add_norm_1(X_t,X_1)
         X_1  = self.cross_attention(X_t,X_en,I_m)
         X_t = self.add_norm_2(X_t,X_1)

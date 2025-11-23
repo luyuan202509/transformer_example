@@ -2,11 +2,13 @@ import torch
 from torch import nn
 
 
+num_hiddens = 24
+
 class EBD(nn.Module):
     def __init__(self,*args,**kwargs)->None:
         super(EBD, self).__init__(*args,**kwargs)
-        self.embedding = nn.Embedding(28, 24)
-        self.pos_embedding = nn.Embedding(12, 24)
+        self.embedding = nn.Embedding(29, num_hiddens)
+        self.pos_embedding = nn.Embedding(12, num_hiddens)
         self.pos_t = torch.arange(0, 12).reshape(1,12)
 
     def forward(self, x:torch.Tensor):
@@ -25,17 +27,17 @@ def transpose_o(O:torch.Tensor):
     O=O.reshape(O.shape[0],O.shape[1],-1) # 前两个维度不变，合并最后两个维度
     return O
 def transpose_qkv(qkv:torch.Tensor):
-    qkv= qkv.reshape(qkv.shape[0],qkv.shape[1],4,6) # 嵌入维度24 拆成4,6
+    qkv= qkv.reshape(qkv.shape[0],qkv.shape[1],4,6) # 嵌入维度num_hiddens 拆成4,6
     qkv = qkv.transpose(-2,-3) # 交换最后两个维度
     return qkv
 
 class Attention_block(nn.Module):
     def __init__(self, *args,**kwargs)->None:
         super(Attention_block, self).__init__(*args,**kwargs)
-        self.W_q = nn.Linear(24, 24,bias=False)
-        self.W_k = nn.Linear(24, 24,bias=False)
-        self.W_v = nn.Linear(24, 24,bias=False)
-        self.W_o = nn.Linear(24, 24,bias=False)
+        self.W_q = nn.Linear(num_hiddens, num_hiddens,bias=False)
+        self.W_k = nn.Linear(num_hiddens, num_hiddens,bias=False)
+        self.W_v = nn.Linear(num_hiddens, num_hiddens,bias=False)
+        self.W_o = nn.Linear(num_hiddens, num_hiddens,bias=False)
     def forward(self,x:torch.Tensor,M:torch.Tensor):
         Q,K,V = self.W_q(x),self.W_k(x),self.W_v(x)
         Q,K,V = transpose_qkv(Q),transpose_qkv(K),transpose_qkv(V)
@@ -48,7 +50,7 @@ class Attention_block(nn.Module):
 class Add_Norm(nn.Module):
     def __init__(self, *args,**kwargs)->None:
         super(Add_Norm, self).__init__(*args,**kwargs)
-        self.layernorm = nn.LayerNorm(24)
+        self.layernorm = nn.LayerNorm(num_hiddens)
         self.dropout = nn.Dropout(0.1)
     def forward(self,x,x1:torch.Tensor):
         """
@@ -58,8 +60,8 @@ class Add_Norm(nn.Module):
         返回：
         x: 归一化
         """
-        x = x + x1
-        x = self.layernorm(x)
+        X_1 = self.linear(x1)
+        x = x + X_1
         x = self.dropout(x)
         return x 
 
@@ -67,9 +69,9 @@ class Add_Norm(nn.Module):
 class Pos_FFN(nn.Module):
     def __init__(self, *args,**kwargs)->None:
         super(Pos_FFN, self).__init__(*args,**kwargs)
-        self.linear1  = nn.Linear(24, 48,bias=False)
+        self.linear1  = nn.Linear(num_hiddens, 48,bias=False)
         self.relu1 = nn.ReLU()
-        self.linear2 = nn.Linear(48, 24,bias=False)
+        self.linear2 = nn.Linear(48, num_hiddens,bias=False)
         self.relu2 = nn.ReLU()
 
     def forward(self,x:torch.Tensor):
@@ -114,10 +116,10 @@ class CrossAttention_block(nn.Module):
     """交叉注意力机制"""
     def __init__(self, *args,**kwargs)->None:
         super(CrossAttention_block, self).__init__(*args,**kwargs)
-        self.W_q = nn.Linear(24, 24,bias=False)
-        self.W_k = nn.Linear(24, 24,bias=False)
-        self.W_v = nn.Linear(24, 24,bias=False)
-        self.W_o = nn.Linear(24, 24,bias=False)
+        self.W_q = nn.Linear(num_hiddens, num_hiddens,bias=False)
+        self.W_k = nn.Linear(num_hiddens, num_hiddens,bias=False)
+        self.W_v = nn.Linear(num_hiddens, num_hiddens,bias=False)
+        self.W_o = nn.Linear(num_hiddens, num_hiddens,bias=False)
 
     def forward(self,x,x_en,I_m):
         Q,K,V = self.W_q(x),self.W_k(x_en),self.W_v(x_en)
@@ -159,7 +161,7 @@ class Decoder(nn.Module):
         self.decoder_blocks = nn.Sequential()
         self.decoder_blocks.append(Decoder_block())
         self.decoder_blocks.append(Decoder_block())
-        self.linear = nn.Linear(24, 28,bias=False)
+        self.linear = nn.Linear(num_hiddens, 29,bias=False)
 
     def forward(self,X_t,O_m,X_en,I_m):
         X_t = self.ebd(X_t)

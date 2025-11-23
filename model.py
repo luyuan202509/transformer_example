@@ -37,7 +37,6 @@ class Attention_block(nn.Module):
         self.W_v = nn.Linear(24, 24,bias=False)
         self.W_o = nn.Linear(24, 24,bias=False)
     def forward(self,x:torch.Tensor,M:torch.Tensor):
-        M = M.unsqueeze(-2) # 添加一个维度，用于掩码
         Q,K,V = self.W_q(x),self.W_k(x),self.W_v(x)
         Q,K,V = transpose_qkv(Q),transpose_qkv(K),transpose_qkv(V)
         O = attention(Q,K,V,M)
@@ -89,6 +88,7 @@ class Encoder_block(nn.Module):
         self.pos_ffn = Pos_FFN()
         self.add_norm_2 = Add_Norm()
     def forward(self,x:torch.Tensor,I_m:torch.Tensor):
+        I_m = I_m.unsqueeze(-2) # 添加一个维度，用于掩码
         x1 = self.attention(x,I_m)
         x1 = self.add_norm_1(x,x1)
         x2 = self.pos_ffn(x1)
@@ -137,14 +137,18 @@ class Decoder_block(nn.Module):
         self.add_norm_2 = Add_Norm()
         self.pos_ffn = Pos_FFN()
         self.add_norm_3 = Add_Norm()
-    def forward(self,x:torch.Tensor,x_en:torch.Tensor):
-        X_1 = self.attention(x)
-        X= self.add_norm_1(x,X_1)
-        X_1  = self.cross_attention(X,x_en)
-        X = self.add_norm_2(X,X_1)
-        X_1 = self.pos_ffn(X)
-        X = self.add_norm_3(X,X_1)
-        return X
+
+        mask = torch.tril(torch.ones(12, 12))
+        self.trail_mask = torch.tril(mask).unsqueeze(0)
+    def forward(self,X_t,O_m,X_en,I_m):
+        O_m = O_m.unsqueeze(-2)
+        X_1 = self.attention(X_t,O_m * self.trail_mask)
+        X_t= self.add_norm_1(X_t,X_1)
+        X_1  = self.cross_attention(X_t,X_en)
+        X_t = self.add_norm_2(X_t,X_1)
+        X_1 = self.pos_ffn(X_t)
+        X_t = self.add_norm_3(X_t,X_1)
+        return X_t
 
 # 解码器
 class Decoder(nn.Module):
@@ -156,12 +160,12 @@ class Decoder(nn.Module):
         self.decoder_blocks.append(Decoder_block())
         self.linear = nn.Linear(24, 28,bias=False)
 
-    def forward(self,x,O_m,x_en,I_m):
-        x = self.ebd(x)
+    def forward(self,X_t,O_m,X_en,I_m):
+        X_t = self.ebd(X_t)
         for decoder_block in self.decoder_blocks:
-            output = decoder_block(x,x_en)
-        output = self.linear(output)
-        return output
+            X_t = decoder_block(X_t,O_m,X_en,I_m)
+        X_t = self.linear(X_t)
+        return X_t
 
 # 构建模型
 class Transformer(nn.Module):
@@ -169,9 +173,9 @@ class Transformer(nn.Module):
         super(Transformer, self).__init__(*args,**kwargs)
         self.encoder = Encoder()
         self.decoder = Decoder()
-    def forward(self,x_s,I_m,x_t,O_m):
-        x_en = self.encoder(x_s,I_m)
-        x = self.decoder(x_s,O_m,x_en,I_m)
+    def forward(self,X_s,I_m,X_t,O_m):
+        x_en = self.encoder(X_s,I_m)
+        x = self.decoder(X_t,O_m,x_en,I_m)
         return x
         
 

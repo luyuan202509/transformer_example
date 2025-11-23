@@ -43,3 +43,11 @@ if __name__ == "__main__":
     my_model.to(device)
     sentence = "abcdif"
     print("翻译结果: ", predict(my_model,sentence,device))
+
+
+# 结果待优化的地方：
+# 1. 预测的时候编码器重复计算，应该只计算一次
+# 2. 预测的时候应该使用beam search
+# 3. 预测的时候应该使用温度采样
+# 4. 预测的时候应该使用topk采样
+# 这些地方都可以优化，

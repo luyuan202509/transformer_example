@@ -11,8 +11,10 @@ class EBD(nn.Module):
 
     def forward(self, x:torch.Tensor):
         return self.embedding(x) + self.pos_embedding(self.pos_t[:,:x.shape[-1]])
-def attention(Q,K,V):
+def attention(Q,K,V,M:torch.Tensor):
     A = Q @ K.transpose(-1,-2) / (K.shape[-1] ** 0.5)
+    M = M.unsqueeze(1)
+    A = A.masked_fill(M == 0,float('-inf'))
     A = torch.softmax(A,dim=-1)
     O = A @ V
     return O
@@ -34,10 +36,11 @@ class Attention_block(nn.Module):
         self.W_k = nn.Linear(24, 24,bias=False)
         self.W_v = nn.Linear(24, 24,bias=False)
         self.W_o = nn.Linear(24, 24,bias=False)
-    def forward(self,x:torch.Tensor):
+    def forward(self,x:torch.Tensor,M:torch.Tensor):
+        M = M.unsqueeze(-2) # 添加一个维度，用于掩码
         Q,K,V = self.W_q(x),self.W_k(x),self.W_v(x)
         Q,K,V = transpose_qkv(Q),transpose_qkv(K),transpose_qkv(V)
-        O = attention(Q,K,V)
+        O = attention(Q,K,V,M)
         O = transpose_o(O)
         O = self.W_o(O)
         return O
@@ -85,8 +88,8 @@ class Encoder_block(nn.Module):
         self.add_norm_1 = Add_Norm()
         self.pos_ffn = Pos_FFN()
         self.add_norm_2 = Add_Norm()
-    def forward(self,x:torch.Tensor):
-        x1 = self.attention(x)
+    def forward(self,x:torch.Tensor,I_m:torch.Tensor):
+        x1 = self.attention(x,I_m)
         x1 = self.add_norm_1(x,x1)
         x2 = self.pos_ffn(x1)
         x2 = self.add_norm_2(x1,x2)
@@ -100,10 +103,10 @@ class Encoder(nn.Module):
         self.encoder_blocks = nn.Sequential()
         self.encoder_blocks.append(Encoder_block())
         self.encoder_blocks.append(Encoder_block())
-    def forward(self,x:torch.Tensor):
+    def forward(self,x:torch.Tensor,I_m:torch.Tensor):
         ebd_x = self.ebd(x)
         for encoder_block in self.encoder_blocks:
-            output = encoder_block(ebd_x)
+            output = encoder_block(ebd_x,I_m)
         return output
 
 
@@ -153,7 +156,7 @@ class Decoder(nn.Module):
         self.decoder_blocks.append(Decoder_block())
         self.linear = nn.Linear(24, 28,bias=False)
 
-    def forward(self,x,x_en):
+    def forward(self,x,O_m,x_en,I_m):
         x = self.ebd(x)
         for decoder_block in self.decoder_blocks:
             output = decoder_block(x,x_en)
@@ -166,9 +169,9 @@ class Transformer(nn.Module):
         super(Transformer, self).__init__(*args,**kwargs)
         self.encoder = Encoder()
         self.decoder = Decoder()
-    def forward(self,x_s,x_t):
-        x_en = self.encoder(x_s)
-        x = self.decoder(x_s,x_en)
+    def forward(self,x_s,I_m,x_t,O_m):
+        x_en = self.encoder(x_s,I_m)
+        x = self.decoder(x_s,O_m,x_en,I_m)
         return x
         
 

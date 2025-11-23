@@ -60,8 +60,8 @@ class MyDataset(Dataset):
         return len(self.source_list)
     def __getitem__(self, index):
         source_id,source_mask,target_id,target_mask = process(self.source_list[index],self.target_list[index])
-        return (torch.tensor(source_id,dtype=torch.long),torch.tensor(source_mask,dtype=torch.bool),
-                torch.tensor(target_id,dtype=torch.long),torch.tensor(target_mask,dtype=torch.bool))
+        return (torch.tensor(source_id,dtype=torch.long),torch.tensor(source_mask,dtype=torch.long),
+                torch.tensor(target_id,dtype=torch.long),torch.tensor(target_mask,dtype=torch.long))
 
 if __name__ == "__main__":
     test_date = MyDataset("source.txt", "target.txt")

@@ -119,10 +119,10 @@ class CrossAttention_block(nn.Module):
         self.W_v = nn.Linear(24, 24,bias=False)
         self.W_o = nn.Linear(24, 24,bias=False)
 
-    def forward(self,x,x_en):
+    def forward(self,x,x_en,I_m):
         Q,K,V = self.W_q(x),self.W_k(x_en),self.W_v(x_en)
         Q,K,V = transpose_qkv(Q),transpose_qkv(K),transpose_qkv(V)
-        O = attention(Q,K,V)
+        O = attention(Q,K,V,I_m)
         O = transpose_o(O)
         O = self.W_o(O)
         return O
@@ -142,9 +142,10 @@ class Decoder_block(nn.Module):
         self.trail_mask = torch.tril(mask).unsqueeze(0)
     def forward(self,X_t,O_m,X_en,I_m):
         O_m = O_m.unsqueeze(-2)
-        X_1 = self.attention(X_t,O_m * self.trail_mask)
+        I_m = I_m.unsqueeze(-2)
+        X_1 = self.attention(X_t,O_m * self.trail_mask[:,:O_m.shape[-1],:O_m.shape[-1]])
         X_t= self.add_norm_1(X_t,X_1)
-        X_1  = self.cross_attention(X_t,X_en)
+        X_1  = self.cross_attention(X_t,X_en,I_m)
         X_t = self.add_norm_2(X_t,X_1)
         X_1 = self.pos_ffn(X_t)
         X_t = self.add_norm_3(X_t,X_1)

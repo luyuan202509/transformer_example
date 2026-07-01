@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 from torch.nn.modules import dropout
-from demo2_attention import attention
+from encoder.demo2_attention import attention
 import copy
 
 from data_input.demo1 import Embedding

@@ -1,10 +1,12 @@
-from turtle import forward
-import torch 
-from torch._higher_order_ops.utils import potential_input_alias_or_mutation
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import torch
 from torch.autograd import Variable
-import torch.nn as nn 
-import math 
-from demo1 import Embedding
+import torch.nn as nn
+import math
+from data_input.demo1 import Embedding
 
 ## dropout 演示
 def dropout_demo():
@@ -93,4 +95,4 @@ def main():
            
 
 if __name__ == "__main__":
-    main()
+    unsqueeze_demo()

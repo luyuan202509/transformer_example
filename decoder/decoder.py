@@ -95,6 +95,7 @@ class Decoder(nn.Module):
         for layer in self.layers:
             x = layer(x,memory,src_mask,target_mask)
         return self.norm(x)
+
 def main():
     
     # 实例化参数

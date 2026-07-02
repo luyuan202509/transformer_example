@@ -53,8 +53,8 @@ def main():
  
 
     # 输出参数 
-    source = target = torch.randn(2,4,4)
-    source_mask = target_mask = torch.randn(2,4,4)
+    source = target =torch.LongTensor([[1,998,4,514],[42,894,2,44],[2,21,600,4]])
+    source_mask = target_mask = torch.zeros(3,4,4)
     
     ed = EncoderDecoder(encoder,decoder,source_embed,target_embed,generator)
     ed_result = ed(source,target,source_mask,target_mask)

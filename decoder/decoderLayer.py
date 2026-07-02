@@ -1,6 +1,15 @@
-import copy 
-import torch 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import copy
+import torch
 import torch.nn as nn
+from data_input.demo1 import Embedding
+from data_input.demo2_pos import PositionalEncoding
+from encoder.demo3_multi_attention import MultiHeadAttention
+from fnn.demo1_fnn import FNN
+from encoder.encoder import Encoder,EncoderLayer
 
 def clones(module,n):
     return nn.ModuleList([copy.deepcopy(module) for _ in range(n)])
@@ -39,6 +48,7 @@ class SublayerConnection(nn.Module):
 
 class DecoderLayer(nn.Module):
     def __init__(self,embed_dim,self_attn,src_attn,ffn,dropout):
+        super(DecoderLayer,self).__init__()
         # embed_dim: 词嵌入维度
         # self_attn: 自注意力对象
         # src_attn: 常规注意力机制对象
@@ -73,7 +83,49 @@ class DecoderLayer(nn.Module):
         
 
 
-        
-        
-        
-        
+def main():
+
+    vocab_size = 1000 # 词表大小
+    embed_dim = 512
+    num_head = 8
+    hidden_dim = 64
+    dropout = 0.1
+    eps = 1e-6
+    
+    self_attn = src_attn = MultiHeadAttention(num_head,embed_dim,dropout)
+    ffn = FNN(embed_dim,hidden_dim,embed_dim)
+    
+    input = torch.LongTensor([[1,998,4,514],[42,894,2,44],[2,21,600,4]])
+    embedding = Embedding(vocab_size,embed_dim)
+    emb = embedding(input)
+    pos_encoding = PositionalEncoding(embed_dim,dropout)
+    pos_emb = pos_encoding(emb)
+
+    mask = torch.zeros(3,4,4)
+    src_mask = target_mask = mask 
+
+    encoderLayer = EncoderLayer(embed_dim,self_attn,ffn,dropout)
+    encoder = Encoder(encoderLayer,3)
+   # 编码器输出
+    encoder_result = encoder(pos_emb,src_mask)
+
+
+
+
+
+    # 解码器层
+    decoderLayer = DecoderLayer(embed_dim,self_attn,src_attn,ffn,dropout)
+    decoderlayer_result = decoderLayer(pos_emb,encoder_result,src_mask,target_mask)
+    print(decoderlayer_result)
+    print(decoderlayer_result.shape)
+
+    
+    
+
+    
+
+    
+
+
+if __name__ == "__main__":
+    main()

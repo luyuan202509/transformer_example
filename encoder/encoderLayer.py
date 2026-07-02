@@ -145,6 +145,7 @@ class FNN(nn.Module):
         return self.fc2(self.dropout(self.relu(self.fc1(x))))
 
 
+# 构建子层连接类 残差连接
 class SublayerConnection(nn.Module):
     def __init__(self,emb_dim,dropout=0.01):
         super(SublayerConnection,self).__init__()

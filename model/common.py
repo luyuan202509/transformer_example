@@ -93,10 +93,6 @@ class MultiHeadAttention(nn.Module):
             
     def forward(self,query,key,value,mask=None):
         # query,key,value的维度为 (batch_size,seq_len,embed_dim)
-
-        if mask is not None:
-            mask = mask.unsqueeze(1)
-
         batch_size = query.size(0)
         
         query,key,value = \

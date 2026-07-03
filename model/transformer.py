@@ -1,102 +1,237 @@
-from numpy.matlib import number
-import torch 
-from torch._dynamo import source
+"""
+Transformer 序列到序列模型。
+
+组装顺序：
+    token → Embedding → PositionalEncoding → Encoder ─→ memory
+    token → Embedding → PositionalEncoding → Decoder ─→ hidden
+                                                           │
+                                        Generator ←────────┘
+                                           │
+                                      log_probs
+"""
+import copy
+import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import numpy as np 
-from common import Encoder,Decoder,Genarator,Embedding,FNN
-from common import EncoderLayer,DecoderLayer,MultiHeadAttention,PositionalEncoding
-import copy 
+
+from common import (
+    Decoder,
+    DecoderLayer,
+    Embedding,
+    Encoder,
+    EncoderLayer,
+    FNN,
+    Generator,
+    MultiHeadAttention,
+    PositionalEncoding,
+)
+
 
 class EncoderDecoder(nn.Module):
-    def __init__(self,encoder:Encoder,decoder:Decoder,source_embed:Embedding,
-                      target_embed:Embedding,generator:Genarator):
+    """纯 Encoder-Decoder 结构。
 
-        super(EncoderDecoder,self).__init__()
+    接收已嵌入的张量，返回解码器隐藏状态。
+    不含 Embedding、PositionalEncoding、Generator。
+    """
 
+    def __init__(self, encoder: Encoder, decoder: Decoder):
+        super().__init__()
         self.encoder = encoder
         self.decoder = decoder
-        self.generator = generator
-        self.source_embed = source_embed
-        self.target_embd = target_embed
 
-    def forward(self,source:torch.Tensor,target:torch.Tensor,src_mask:torch.Tensor,target_mask:torch.Tensor):
-        
-        return self.decode(self.encode(source,src_mask),src_mask,target,target_mask)
+    def forward(self, src_embedded, tgt_embedded, src_mask, tgt_mask):
+        """前向传播：编码 → 解码 → 隐藏状态"""
+        memory = self.encode(src_embedded, src_mask)
+        return self.decode(tgt_embedded, memory, src_mask, tgt_mask)
 
-    def encode(self,source:torch.Tensor,src_mask:torch.Tensor):
-        return self.encoder(self.source_embed(source),src_mask)
-        
-    def decode(self,memory:torch.Tensor,src_mask:torch.Tensor,target:torch.Tensor,target_mask:torch.Tensor):
-        
-        return self.decoder(self.target_embd(target),memory,src_mask,target_mask)
+    def encode(self, src_embedded, src_mask):
+        """仅编码：已嵌入源序列 → 编码器记忆"""
+        return self.encoder(src_embedded, src_mask)
 
+    def decode(self, tgt_embedded, memory, src_mask, tgt_mask):
+        """仅解码：已嵌入目标序列 + 编码器记忆 → 隐藏状态"""
+        return self.decoder(tgt_embedded, memory, src_mask, tgt_mask)
 
 
-def make_model(source_vocab_size:int,target_vocab_size:int,num_layer:int=6,
-               embed_dim:int=512,num_head:int = 8,dropout_rate:int = 0.1):
-    
-    cp = copy.deepcopy
+class Transformer(nn.Module):
+    """完整的 Transformer 序列到序列模型。
 
-    # 获取多头注意力
-    attn = MultiHeadAttention(num_head,embed_dim,dropout_rate)
+    Parameters
+    ----------
+    src_vocab_size : int
+        源词汇表大小。
+    tgt_vocab_size : int
+        目标词汇表大小。
+    num_layers : int, default 6
+        编码器和解码器的层数。
+    d_model : int, default 512
+        模型维度（嵌入维度）。
+    num_heads : int, default 8
+        多头注意力头数。
+    d_ff : int, default 2048
+        前馈网络隐藏层维度（标准为 4 × d_model）。
+    dropout : float, default 0.1
+        Dropout 概率。
+    max_len : int, default 5000
+        位置编码最大序列长度。
+    padding_idx : int, default 0
+        嵌入层填充索引。
+    share_embed : bool, default False
+        是否共享源和目标嵌入层（要求 src_vocab_size == tgt_vocab_size）。
+    tie_embed_weights : bool, default False
+        是否将目标嵌入层权重绑定到 Generator 输出投影层。
+    """
 
-    # 实例化前馈网络
-    ffn = FNN(embed_dim,embed_dim,embed_dim)
+    def __init__(
+        self,
+        src_vocab_size: int,
+        tgt_vocab_size: int,
+        num_layers: int = 6,
+        d_model: int = 512,
+        num_heads: int = 8,
+        d_ff: int = 2048,
+        dropout: float = 0.1,
+        max_len: int = 5000,
+        padding_idx: int = 0,
+        share_embed: bool = False,
+        tie_embed_weights: bool = False,
+    ):
+        super().__init__()
 
-    # 实例化位置编码
-    pos_encode = PositionalEncoding(embed_dim,dropout_rate)
-    
-    encoder = Encoder(EncoderLayer(embed_dim,cp(attn),cp(ffn),dropout_rate),num_layer)
-    decoder = Decoder(DecoderLayer(embed_dim,cp(attn),cp(attn),cp(ffn),dropout_rate),num_layer)
-    src_emb = Embedding(source_vocab_size,embed_dim) 
-    target_emb = Embedding(target_vocab_size,embed_dim)
-    source_embed = nn.Sequential(src_emb,cp(pos_encode))
-    target_embed = nn.Sequential(target_emb,cp(pos_encode))
-    generator = Genarator(embed_dim,target_vocab_size)
+        # ── 嵌入层 ──────────────────────────────────────────
+        src_emb = Embedding(src_vocab_size, d_model, padding_idx)
+        if share_embed and src_vocab_size == tgt_vocab_size:
+            tgt_emb = src_emb  # 共享嵌入
+        else:
+            tgt_emb = Embedding(tgt_vocab_size, d_model, padding_idx)
 
-    model = EncoderDecoder(encoder,decoder,source_embed,target_embed,generator)
-    for p in model.parameters():
-        if p.dim() > 1:
-            nn.init.xavier_uniform_(p)
-    return model
+        # PositionalEncoding 零参数模块，source 和 target 共享同一实例
+        pos_enc = PositionalEncoding(d_model, dropout, max_len)
+        self.source_embed = nn.Sequential(src_emb, pos_enc)
+        self.target_embed = nn.Sequential(tgt_emb, pos_enc)
+
+        # ── 编码器 / 解码器 ─────────────────────────────────
+        attn = MultiHeadAttention(num_heads, d_model, dropout)
+        ffn = FNN(d_model, d_ff, d_model, dropout)
+
+        encoder_layer = EncoderLayer(d_model, attn, ffn, dropout)
+        decoder_layer = DecoderLayer(
+            d_model,
+            copy.deepcopy(attn),   # decoder 自注意力
+            copy.deepcopy(attn),   # 交叉注意力
+            copy.deepcopy(ffn),
+            dropout,
+        )
+
+        self.encoder_decoder = EncoderDecoder(
+            Encoder(encoder_layer, num_layers),
+            Decoder(decoder_layer, num_layers),
+        )
+
+        # ── 输出投影层（Generator 外置）─────────────────────
+        self.generator = Generator(d_model, tgt_vocab_size)
+
+        # ── 可选：权重绑定 ──────────────────────────────────
+        if tie_embed_weights:
+            self.generator.project.weight = self.target_embed[0].emb.weight
+
+        # ── 参数初始化 ──────────────────────────────────────
+        self._init_parameters()
+
+    def _init_parameters(self):
+        """逐模块参数初始化（预留扩展点）。"""
+        for param in self.parameters():
+            if param.dim() > 1:
+                nn.init.xavier_uniform_(param)
+
+    def forward(self, src, tgt, src_mask=None, tgt_mask=None):
+        """完整前向传播：嵌入 → 编码 → 解码 → 生成 → log_probs。
+
+        Parameters
+        ----------
+        src : Tensor, shape (batch, src_seq)
+            源序列 token ID。
+        tgt : Tensor, shape (batch, tgt_seq)
+            目标序列 token ID。
+        src_mask : Tensor, optional
+            源序列注意力掩码。
+        tgt_mask : Tensor, optional
+            目标序列注意力掩码。
+
+        Returns
+        -------
+        Tensor, shape (batch, tgt_seq, tgt_vocab)
+            log-概率分布。
+        """
+        src_emb = self.source_embed(src)
+        tgt_emb = self.target_embed(tgt)
+        hidden = self.encoder_decoder(src_emb, tgt_emb, src_mask, tgt_mask)
+        return self.generator(hidden)
+
+    def encode(self, src, src_mask=None):
+        """仅编码：源 token → memory（用于推理缓存）。"""
+        return self.encoder_decoder.encode(self.source_embed(src), src_mask)
+
+    def decode(self, tgt, memory, src_mask=None, tgt_mask=None):
+        """仅解码：目标 token + memory → 隐藏状态。"""
+        return self.encoder_decoder.decode(
+            self.target_embed(tgt), memory, src_mask, tgt_mask
+        )
 
 
+# ═══════════════════════════════════════════════════════════════════
+# 冒烟测试
+# ═══════════════════════════════════════════════════════════════════
 
-def main():
+def test_transformer():
+    """轻量级冒烟测试：验证前向传播形状、log_softmax、权重绑定、组件共享。"""
+    model = Transformer(
+        src_vocab_size=1000,
+        tgt_vocab_size=1000,
+        num_layers=2,
+        d_model=256,
+        num_heads=4,
+        d_ff=512,
+        dropout=0.1,
+        tie_embed_weights=True,
+    )
 
-    # 实例化参数 
-    vocab_size = 1000
-    emb_dim = 512
-    dropout_rate = 0.1
-    
-    source_embed = Embedding(vocab_size,emb_dim)
-    target_embed = Embedding(vocab_size,emb_dim)
-    generator = Genarator(emb_dim,vocab_size)
+    src = torch.randint(0, 1000, (2, 10))  # (batch=2, seq=10)
+    tgt = torch.randint(0, 1000, (2, 8))   # (batch=2, seq=8)
 
-    multi_att = MultiHeadAttention(4,emb_dim)
-    ffn = FNN(emb_dim,emb_dim,emb_dim)
-    encoder_layer = EncoderLayer(emb_dim,multi_att,ffn,dropout_rate)
-    decoder_layer = DecoderLayer(emb_dim,multi_att,multi_att,ffn,dropout_rate)
-    encoder = Encoder(encoder_layer,3)
-    decoder = Decoder(decoder_layer,3)
- 
+    output = model(src, tgt)
 
-    # 输出参数 
-    source = target =torch.LongTensor([[1,998,4,514],[42,894,2,44],[2,21,600,4]])
-    source_mask = target_mask = torch.zeros(3,4,4)
-    
-    ed = EncoderDecoder(encoder,decoder,source_embed,target_embed,generator)
-    ed_result = ed(source,target,source_mask,target_mask)
-    print(ed_result)
-    print(ed_result.shape)
+    # ① 输出形状验证
+    assert output.shape == (2, 8, 1000), (
+        f"期望 (2,8,1000)，实际 {output.shape}"
+    )
 
+    # ② log_softmax 输出 ≤ 0
+    assert (output <= 0).all(), "log_softmax 输出应 ≤ 0"
 
-def create_model():
-    source_vocab_size = target_vocab_size = 11
-    num_layer =6
-    model = make_model(source_vocab_size,target_vocab_size,num_layer)
-    print(model)
+    # ③ 概率和为 1
+    probs = torch.exp(output)
+    assert torch.allclose(probs.sum(dim=-1), torch.ones(2, 8), atol=1e-5), (
+        "概率和应接近 1"
+    )
+
+    # ④ 验证权重绑定
+    assert model.generator.project.weight is model.target_embed[0].emb.weight, (
+        "权重绑定失败：generator 和 target_embed 应共享同一权重矩阵"
+    )
+
+    # ⑤ 验证 PositionalEncoding 共享
+    assert model.source_embed[1] is model.target_embed[1], (
+        "PositionalEncoding 未共享：source_embed[1] 和 target_embed[1] 应为同一实例"
+    )
+
+    print(f"✓ 冒烟测试全部通过")
+    print(f"  输出形状:  {output.shape}")
+    print(f"  参数量:    {sum(p.numel() for p in model.parameters()):,}")
+    print(f"  log_softmax ≤ 0:  通过")
+    print(f"  概率和 = 1:       通过")
+    print(f"  权重绑定:         通过")
+    print(f"  PositionalEncoding 共享: 通过")
+
 
 if __name__ == "__main__":
-   create_model()
+    test_transformer()

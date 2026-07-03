@@ -1,8 +1,10 @@
 
-import torch
-import torch.nn as nn
+import torch 
+import torch.nn as nn 
 import copy
+from torch.autograd import Variable
 import math
+import numpy as np
 import torch.nn.functional as F
 
 
@@ -33,7 +35,7 @@ class PositionalEncoding(nn.Module):
         # 初始化绝对位置编码矩阵
         position = torch.arange(0,max_len).unsqueeze(dim=1)
         # 变换矩阵,跳跃式变换
-        div_term = torch.exp(torch.arange(0,emb_dim,2)* -(math.log(10000.0)/emb_dim))
+        div_term = torch.exp(torch.arange(0,emb_dim,2)* -(math.log(1000.0)/emb_dim))
     
         pe[:,0::2] = torch.sin(position * div_term)
         pe[:,1::2] = torch.cos(position * div_term)
@@ -46,7 +48,7 @@ class PositionalEncoding(nn.Module):
         
     def forward(self,x):
         # pe中最长句子长度太长，截取到和句子的长度一致，
-        x = x + self.pe[:,:x.size(1)]
+        x = x + Variable(self.pe[:,:x.size(1)],requires_grad=False)
         return self.dropout(x)
 
 
@@ -62,7 +64,7 @@ def attention(query,key,value,mask:torch.Tensor=None,dropout=None):
     # dropout c传入的dropout实例化对象
     d_k = query.size(-1)
     
-    score = torch.matmul(query,key.transpose(-2,-1)) / math.sqrt(d_k)
+    score = torch.matmul(query,key.transpose(-2,-1)) / np.sqrt(d_k)
     # score = (query @ key.T) / np.sqrt(d_k)
 
     if mask is not None:
@@ -99,9 +101,9 @@ class MultiHeadAttention(nn.Module):
 
         batch_size = query.size(0)
         
-        query,key,value = \
+        query,value,key = \
             [model(x).view(batch_size, -1, self.head, self.d_k).transpose(1,2)
-            for model,x in zip(self.linears,(query,key,value))]
+            for model,x in zip(self.linears,(key,value,query))]
         
         # 将每个头输出的输出传入到注意力层
         x,self.attn = attention(query,key,value,mask=mask,dropout = self.dropout)
@@ -130,14 +132,14 @@ class LayerNorm(nn.Module):
         return self.a_2*norn + self.b_2
 
 class FNN(nn.Module):
-    def __init__(self,input_dim,hidden_dim,output_dim,dropout=0.1):
+    def __init__(self,input_dim,hidden_dim,output_dim):
         super(FNN,self).__init__()
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
         self.output_dim = output_dim
         self.fc1 = nn.Linear(input_dim,hidden_dim)
         self.fc2 = nn.Linear(hidden_dim,output_dim)
-        self.dropout = nn.Dropout(p=dropout)
+        self.dropout = nn.Dropout(p=0.1)
         self.relu = nn.ReLU()
 
     def forward(self,x):
@@ -227,9 +229,9 @@ class Decoder(nn.Module):
         return self.norm(x)
 
 
-class Generator(nn.Module):
+class Genarator(nn.Module):
     def __init__(self,emb_dim:int,vocab_size:int):
-        super(Generator,self).__init__()
+        super(Genarator,self).__init__()
         self.project = nn.Linear(emb_dim,vocab_size)
 
     def forward(self,x):
